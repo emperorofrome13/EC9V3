@@ -1,0 +1,79 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Conversation {
+  id        String   @id @default(cuid())
+  title     String
+  agent     String
+  messages  Message[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Message {
+  id               String   @id @default(cuid())
+  conversationId   String
+  conversation     Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role             String
+  content          String
+  model            String?
+  autopromptStage  String?
+  autopromptPass   Boolean?
+  tokens           Int?
+  duration         Int?
+  isStreaming      Boolean  @default(false)
+  toolCalls        String   @default("[]")
+  toolResults      String   @default("[]")
+  createdAt        DateTime @default(now())
+}
+
+model SubAgentTask {
+  id          String    @id @default(cuid())
+  type        String
+  description String
+  prompt      String
+  status      String    @default("pending")
+  result      String?
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+model Skill {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  description     String
+  version         String
+  triggerPatterns String
+  instructions    String
+  tools           String
+  subAgents       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Agent {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String
+  icon        String
+  systemPrompt String
+  color       String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Settings {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
