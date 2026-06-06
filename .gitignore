@@ -8,6 +8,7 @@ node_modules/
 out/
 build/
 dist/
+desktop-dist/
 
 # Environment files
 .env

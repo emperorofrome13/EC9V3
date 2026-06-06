@@ -1,11 +1,17 @@
 {
   "name": "ec9v3",
   "version": "1.0.0",
+  "description": "Local-first AI coding assistant with agent tools, durable state, and desktop support.",
   "private": true,
+  "author": "emperorofrome13",
+  "main": "desktop/main.cjs",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "desktop:dev": "electron desktop/main.cjs",
+    "desktop:preview": "npm run build && electron desktop/main.cjs --production",
+    "desktop:dist": "npm run build && electron-builder --win portable",
     "lint": "next lint",
     "cli": "node cli.mjs",
     "cli:health": "node cli.mjs health",
@@ -48,6 +54,8 @@
     "@types/react-dom": "^18.3.0",
     "@types/react-syntax-highlighter": "^15.5.11",
     "autoprefixer": "^10.4.0",
+    "electron": "^31.7.7",
+    "electron-builder": "^26.15.0",
     "eslint": "^8.0.0",
     "eslint-config-next": "^14.2.0",
     "playwright": "^1.59.1",
@@ -55,5 +63,55 @@
     "prisma": "^5.12.0",
     "tailwindcss": "^3.4.0",
     "typescript": "^5.4.0"
+  },
+  "build": {
+    "appId": "dev.ec9v3.desktop",
+    "productName": "EC9V3",
+    "directories": {
+      "output": "desktop-dist"
+    },
+    "asar": true,
+    "files": [
+      "desktop/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": ".next/standalone",
+        "to": "next",
+        "filter": [
+          "**/*",
+          "!**/.env*",
+          "!**/.ec9v3/**",
+          "!**/logs/**",
+          "!**/*.db",
+          "!**/*.db-*",
+          "!**/*.jsonl",
+          "!**/*.log"
+        ]
+      },
+      {
+        "from": ".next/static",
+        "to": "next/.next/static"
+      }
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "artifactName": "EC9V3-${version}-Windows-${arch}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Development"
+    },
+    "mac": {
+      "target": [
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools"
+    }
   }
 }

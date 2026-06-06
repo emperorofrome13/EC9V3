@@ -33,6 +33,30 @@ Then open [http://localhost:3000](http://localhost:3000).
 
 Configure providers from the Settings page. Keep real API keys in `.env` or browser settings only; do not commit them.
 
+## Desktop App
+
+EC9v3 can also run as an Electron desktop app.
+
+Development desktop shell:
+
+```powershell
+npm run desktop:dev
+```
+
+Production preview:
+
+```powershell
+npm run desktop:preview
+```
+
+Build a portable Windows desktop app:
+
+```powershell
+npm run desktop:dist
+```
+
+Desktop artifacts are written to `desktop-dist/`. The packaged app uses the Next standalone server internally and does not bundle `.env`, `.ec9v3`, logs, task databases, JSONL work logs, or other local runtime state.
+
 ## CLI
 
 ```powershell
@@ -62,5 +86,5 @@ npx.cmd tsc --noEmit
 node --check cli.mjs
 node cli.mjs health
 npm run build
+npm run desktop:dist
 ```
-
