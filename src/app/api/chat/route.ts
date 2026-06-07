@@ -2768,6 +2768,12 @@ export async function POST(request: NextRequest) {
               if (model) chatOptions.model = model;
               forceNoToolsNextTurn = false;
 
+              send({
+                type: 'pipeline_status',
+                stage: 'model_stream',
+                summary: `Contacting ${providerApiProtocol === 'anthropic' ? 'Anthropic-compatible' : 'OpenAI-compatible'} model${model ? `: ${model}` : ''}`,
+              });
+
               for await (const chunk of streamChatCompletion(baseUrl, chatOptions as any)) {
                 if (request.signal.aborted) throw new Error('Stopped by user');
                 if (chunk.type === 'content' && chunk.content) {
@@ -2923,6 +2929,11 @@ export async function POST(request: NextRequest) {
               });
 
               for (const call of parsedToolCalls) {
+                send({
+                  type: 'tool_call',
+                  toolCall: { id: call.id, name: call.name, arguments: call.rawArguments },
+                });
+
                 if (call.parseError) {
                   parseErrorCallsThisIteration++;
                   console.error('[Tool Call Parse Error]', call.parseError);
@@ -2935,6 +2946,15 @@ export async function POST(request: NextRequest) {
                     role: 'tool',
                     tool_call_id: call.id,
                     content: JSON.stringify({ success: false, error: call.parseError }),
+                  });
+                  send({
+                    type: 'tool_result',
+                    toolCall: {
+                      id: call.id,
+                      name: call.name,
+                      result: call.parseError,
+                      isError: true,
+                    },
                   });
                   continue;
                 }
@@ -3019,16 +3039,22 @@ export async function POST(request: NextRequest) {
                     streamedToolPayloadId = storedToolCall?.resultPayloadId;
                   }
                   send({
-                    type: 'tool_call',
-                    toolCall: { id: call.id, name: call.name, arguments: call.rawArguments },
-                  });
-                  send({
                     type: 'tool_result',
                     toolCall: {
                       id: call.id,
                       name: call.name,
                       result: streamedToolPayloadId ? streamedToolResult : (memoryResult.success ? memoryResult.result : memoryResult.error),
                       resultPayloadId: streamedToolPayloadId,
+                      isError: !result.success,
+                    },
+                  });
+                } else {
+                  send({
+                    type: 'tool_result',
+                    toolCall: {
+                      id: call.id,
+                      name: call.name,
+                      result: memoryResult.success ? memoryResult.result : memoryResult.error,
                       isError: !result.success,
                     },
                   });

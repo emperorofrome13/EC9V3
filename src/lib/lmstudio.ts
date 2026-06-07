@@ -20,6 +20,64 @@ export interface LMStudioChatResponse {
   model?: string;
 }
 
+const PROVIDER_RESPONSE_TIMEOUT_MS = Number(process.env.EC9V3_PROVIDER_RESPONSE_TIMEOUT_MS || 60_000);
+const PROVIDER_STREAM_IDLE_TIMEOUT_MS = Number(process.env.EC9V3_PROVIDER_STREAM_IDLE_TIMEOUT_MS || 120_000);
+
+function providerTimeoutMessage(label: string, timeoutMs: number): string {
+  return `${label} timed out after ${Math.round(timeoutMs / 1000)}s without a provider response. The provider may still have charged tokens; retry with a smaller request or different model.`;
+}
+
+async function fetchWithProviderTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs = PROVIDER_RESPONSE_TIMEOUT_MS,
+): Promise<Response> {
+  const timeoutController = new AbortController();
+  const upstreamSignal = init.signal;
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    timeoutController.abort();
+  }, timeoutMs);
+  const onAbort = () => timeoutController.abort();
+  upstreamSignal?.addEventListener('abort', onAbort, { once: true });
+
+  try {
+    return await fetch(input, { ...init, signal: timeoutController.signal });
+  } catch (error) {
+    if (timedOut) throw new Error(providerTimeoutMessage('Provider connection', timeoutMs));
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    upstreamSignal?.removeEventListener('abort', onAbort);
+  }
+}
+
+async function readStreamChunkWithIdleTimeout(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  signal?: AbortSignal,
+  timeoutMs = PROVIDER_STREAM_IDLE_TIMEOUT_MS,
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  if (signal?.aborted) throw new Error('Request aborted');
+
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let abortHandler: (() => void) | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      reject(new Error(providerTimeoutMessage('Provider stream', timeoutMs)));
+    }, timeoutMs);
+    abortHandler = () => reject(new Error('Request aborted'));
+    signal?.addEventListener('abort', abortHandler, { once: true });
+  });
+
+  try {
+    return await Promise.race([reader.read(), timeoutPromise]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+    if (abortHandler) signal?.removeEventListener('abort', abortHandler);
+  }
+}
+
 function shouldSendModel(model: string | undefined): model is string {
   return Boolean(model && model.trim() && model !== 'local-model');
 }
@@ -304,7 +362,7 @@ async function anthropicChatCompletion(
   options: LMStudioChatOptions,
 ): Promise<LMStudioChatResponse> {
   const url = normalizeProviderBaseUrl(baseUrl);
-  const res = await fetch(`${url}/v1/messages`, {
+  const res = await fetchWithProviderTimeout(`${url}/v1/messages`, {
     method: 'POST',
     headers: getProviderHeaders(options.apiKey, 'anthropic', true),
     body: JSON.stringify(buildAnthropicBody(options, false)),
@@ -379,7 +437,7 @@ export async function chatCompletion(
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (options.apiKey) headers['Authorization'] = `Bearer ${options.apiKey}`;
 
-  const res = await fetch(`${url}/v1/chat/completions`, {
+  const res = await fetchWithProviderTimeout(`${url}/v1/chat/completions`, {
     method: 'POST',
     headers,
     body: JSON.stringify(body),
@@ -456,12 +514,18 @@ export async function* streamChatCompletion(
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (options.apiKey) headers['Authorization'] = `Bearer ${options.apiKey}`;
 
-  const res = await fetch(`${url}/v1/chat/completions`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-    signal: options.signal,
-  });
+  let res: Response;
+  try {
+    res = await fetchWithProviderTimeout(`${url}/v1/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: options.signal,
+    });
+  } catch (error) {
+    yield { type: 'error', error: error instanceof Error ? error.message : String(error) };
+    return;
+  }
 
   if (!res.ok) {
     const errText = await res.text().catch(() => 'Unknown error');
@@ -486,7 +550,7 @@ export async function* streamChatCompletion(
 
   try {
     outer: while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await readStreamChunkWithIdleTimeout(reader, options.signal);
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
@@ -579,12 +643,18 @@ async function* streamAnthropicChatCompletion(
     return;
   }
 
-  const res = await fetch(`${url}/v1/messages`, {
-    method: 'POST',
-    headers: getProviderHeaders(options.apiKey, 'anthropic', true),
-    body: JSON.stringify(body),
-    signal: options.signal,
-  });
+  let res: Response;
+  try {
+    res = await fetchWithProviderTimeout(`${url}/v1/messages`, {
+      method: 'POST',
+      headers: getProviderHeaders(options.apiKey, 'anthropic', true),
+      body: JSON.stringify(body),
+      signal: options.signal,
+    });
+  } catch (error) {
+    yield { type: 'error', error: error instanceof Error ? error.message : String(error) };
+    return;
+  }
   if (!res.ok) {
     const errText = await res.text().catch(() => 'Unknown error');
     yield { type: 'error', error: formatApiError(res.status, errText) };
@@ -610,7 +680,7 @@ async function* streamAnthropicChatCompletion(
 
   try {
     outer: while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await readStreamChunkWithIdleTimeout(reader, options.signal);
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
