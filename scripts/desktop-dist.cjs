@@ -8,7 +8,7 @@ const restoreScript = require('path').join(__dirname, 'restore-node-native.cjs')
 function run(command, args) {
   const result = spawnSync(command, args, {
     stdio: 'inherit',
-    shell: isWindows,
+    shell: isWindows && command.toLowerCase().endsWith('.cmd'),
   });
 
   if (result.error) {

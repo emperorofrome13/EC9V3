@@ -1,6 +1,6 @@
 {
   "name": "ec9v3",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Local-first AI coding assistant with agent tools, durable state, and desktop support.",
   "private": true,
   "author": "emperorofrome13",
