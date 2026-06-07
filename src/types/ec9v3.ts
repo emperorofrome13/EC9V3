@@ -221,7 +221,7 @@ export interface LMStudioStreamEvent {
 }
 
 export interface StreamingChunk {
-  type: 'content' | 'tool_call' | 'tool_result' | 'error' | 'done' | 'auto_prompt_stage' | 'sub_agent_start' | 'sub_agent_result' | 'auto_prompt_stage_start' | 'auto_compaction' | 'verification_start' | 'verification_result' | 'tool_recovery_flush';
+  type: 'content' | 'tool_call' | 'tool_result' | 'error' | 'done' | 'auto_prompt_stage' | 'sub_agent_start' | 'sub_agent_result' | 'auto_prompt_stage_start' | 'auto_compaction' | 'verification_start' | 'verification_result' | 'tool_recovery_flush' | 'pipeline_status';
   content?: string;
   toolCall?: Partial<ToolCall>;
   stageResult?: AutoPromptStageResult;

@@ -2646,14 +2646,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    let plan: ExecutionPlan = getDefaultPlan();
-    if (planningPassEnabled !== false && effectiveSubAgentEnabled && lastUserMessage) {
-      // Client strips `agent` from API-shape messages, so read it from the
-      // request body. Fall back to 'general' rather than scanning messages.
-      const planningAgent = requestedAgent || 'general';
-      plan = await runPlanningPass(lastUserMessage, planningAgent, workingDir, projectId, loadedSkills, baseUrl, model, planningPassTimeout, lmOptiEnabled, providerApiKey, providerApiProtocol);
-    }
-
     // Filter to only valid conversational API roles. Historical tool calls are
     // summarized as text below instead of replayed as active tool protocol
     // messages; stale or malformed tool history can otherwise trigger provider
@@ -2683,28 +2675,6 @@ export async function POST(request: NextRequest) {
       ? persistedHistoryMessages
       : historyMessages;
 
-    const compaction = await compactHistoryIfNeeded(
-      baseUrl,
-      model,
-      enhancedSystemPrompt,
-      contextHistoryMessages,
-      cloudModeEnabled
-        ? {
-            ...autoCompaction,
-            enabled: true,
-            limitType: 'percent',
-            percent: Math.min(Number(autoCompaction?.percent || 90), 70),
-          }
-        : autoCompaction,
-      providerApiKey,
-      providerApiProtocol,
-    );
-    const allMessages: ApiMessage[] = [];
-    if (enhancedSystemPrompt) {
-      allMessages.push({ role: 'system', content: enhancedSystemPrompt });
-    }
-    allMessages.push(...compaction.messages);
-
     const modifiedFiles = new Set<string>();
     const readFiles = new Set<string>();
     const editState: EditLoopState = new Map();
@@ -2718,6 +2688,41 @@ export async function POST(request: NextRequest) {
         }
 
         try {
+          if (providerApiProtocol === 'anthropic' && (!model || !String(model).trim() || model === 'local-model')) {
+            throw new Error('Anthropic-compatible providers require a selected model. Open Settings, refresh API models, and select the Qwen/MiniMax model explicitly.');
+          }
+
+          let plan: ExecutionPlan = getDefaultPlan();
+          if (planningPassEnabled !== false && effectiveSubAgentEnabled && lastUserMessage) {
+            send({ type: 'pipeline_status', summary: 'Planning request with selected model' });
+            // Client strips `agent` from API-shape messages, so read it from the
+            // request body. Fall back to 'general' rather than scanning messages.
+            const planningAgent = requestedAgent || 'general';
+            plan = await runPlanningPass(lastUserMessage, planningAgent, workingDir, projectId, loadedSkills, baseUrl, model, planningPassTimeout, lmOptiEnabled, providerApiKey, providerApiProtocol);
+          }
+
+          send({ type: 'pipeline_status', summary: 'Preparing conversation context' });
+          const compaction = await compactHistoryIfNeeded(
+            baseUrl,
+            model,
+            enhancedSystemPrompt,
+            contextHistoryMessages,
+            cloudModeEnabled
+              ? {
+                  ...autoCompaction,
+                  enabled: true,
+                  limitType: 'percent',
+                  percent: Math.min(Number(autoCompaction?.percent || 90), 70),
+                }
+              : autoCompaction,
+            providerApiKey,
+            providerApiProtocol,
+          );
+          const allMessages: ApiMessage[] = [];
+          if (enhancedSystemPrompt) {
+            allMessages.push({ role: 'system', content: enhancedSystemPrompt });
+          }
+          allMessages.push(...compaction.messages);
           const loopMessages = [...allMessages];
           const toolFlushAnchorIndex = findLastUserMessageIndex(loopMessages);
           let finalContent = '';

@@ -386,6 +386,7 @@ function getChunkPreview(chunk: StreamingChunk): string {
   if (chunk.type === "sub_agent_result") return chunk.result?.content || chunk.agentType || "sub-agent result";
   if (chunk.type === "auto_compaction") return chunk.summary || "compacted";
   if (chunk.type === "tool_recovery_flush") return chunk.summary || "tool recovery";
+  if (chunk.type === "pipeline_status") return chunk.summary || "preparing";
   if (chunk.type === "done") return "done";
   return chunk.type;
 }
@@ -1044,6 +1045,8 @@ export function ChatPanel() {
               compactConversation(convId, chunk.summary);
             } else if (chunk.type === "tool_recovery_flush") {
               setRunState({ status: "running", message: chunk.summary || "Recovered from repeated invalid tool calls" });
+            } else if (chunk.type === "pipeline_status") {
+              setRunState({ status: "running", message: chunk.summary || "Preparing request" });
             } else if (chunk.type === "sub_agent_start" && chunk.agentType) {
               // Track sub-agent
               addActiveAgent({
