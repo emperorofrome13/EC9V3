@@ -57,6 +57,12 @@ npm run desktop:dist
 
 Desktop artifacts are written to `desktop-dist/`. The packaged app uses the Next standalone server internally and does not bundle `.env`, `.ec9v3`, logs, task databases, JSONL work logs, or other local runtime state.
 
+The desktop build rebuilds native modules for Electron while packaging, then restores `better-sqlite3` for the local Node runtime afterward. If a Windows process has the native module locked, stop running EC9v3/Next processes and run:
+
+```powershell
+npm rebuild better-sqlite3
+```
+
 ## CLI
 
 ```powershell
