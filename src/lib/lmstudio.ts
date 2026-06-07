@@ -82,6 +82,12 @@ function shouldSendModel(model: string | undefined): model is string {
   return Boolean(model && model.trim() && model !== 'local-model');
 }
 
+function parseSseDataLine(line: string): string | undefined {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('data:')) return undefined;
+  return trimmed.slice(5).trimStart();
+}
+
 function applyLmOptiFields(body: Record<string, unknown>, options: LMStudioChatOptions): void {
   if (!options.lmOpti) return;
 
@@ -560,14 +566,15 @@ export async function* streamChatCompletion(
       for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed) continue;
-        if (trimmed === 'data: [DONE]') {
+        const sseData = parseSseDataLine(trimmed);
+        if (sseData === '[DONE]') {
           streamDone = true;
           break outer;
         }
-        if (!trimmed.startsWith('data: ')) continue;
+        if (sseData === undefined) continue;
 
         try {
-          const json = JSON.parse(trimmed.slice(6));
+          const json = JSON.parse(sseData);
           const delta = json.choices?.[0]?.delta;
           if (!delta) continue;
 
@@ -689,11 +696,12 @@ async function* streamAnthropicChatCompletion(
       for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed || trimmed.startsWith('event:')) continue;
-        if (trimmed === 'data: [DONE]') break outer;
-        if (!trimmed.startsWith('data: ')) continue;
+        const sseData = parseSseDataLine(trimmed);
+        if (sseData === '[DONE]') break outer;
+        if (sseData === undefined) continue;
 
         try {
-          const json = JSON.parse(trimmed.slice(6)) as {
+          const json = JSON.parse(sseData) as {
             type?: string;
             index?: number;
             content_block?: Record<string, unknown>;
