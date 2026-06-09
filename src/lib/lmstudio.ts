@@ -104,6 +104,18 @@ function normalizeProviderBaseUrl(baseUrl: string): string {
   return url.endsWith('/v1') ? url.slice(0, -3) : url;
 }
 
+function shouldSendLmStudioExtensionFields(baseUrl: string, apiKey?: string): boolean {
+  if (process.env.EC9V3_SEND_LMSTUDIO_EXTENSIONS === 'true') return true;
+  if (process.env.EC9V3_SEND_LMSTUDIO_EXTENSIONS === 'false') return false;
+
+  try {
+    const host = new URL(normalizeProviderBaseUrl(baseUrl)).hostname.toLowerCase();
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1';
+  } catch {
+    return !apiKey;
+  }
+}
+
 export function getProviderHeaders(
   apiKey?: string,
   apiProtocol: ModelApiProtocol = 'openai',
@@ -426,9 +438,11 @@ export async function chatCompletion(
     top_p: options.topP ?? 0.9,
     stream: false,
   };
-  if (options.topK !== undefined) body.top_k = options.topK;
-  if (options.repeatPenalty !== undefined) body.repeat_penalty = options.repeatPenalty;
-  applyLmOptiFields(body, options);
+  if (shouldSendLmStudioExtensionFields(baseUrl, options.apiKey)) {
+    if (options.topK !== undefined) body.top_k = options.topK;
+    if (options.repeatPenalty !== undefined) body.repeat_penalty = options.repeatPenalty;
+    applyLmOptiFields(body, options);
+  }
   
   // Use 'local-model' to refer to currently loaded model, or omit if empty
   if (shouldSendModel(options.model)) {
@@ -503,9 +517,11 @@ export async function* streamChatCompletion(
     top_p: options.topP ?? 0.9,
     stream: true,
   };
-  if (options.topK !== undefined) body.top_k = options.topK;
-  if (options.repeatPenalty !== undefined) body.repeat_penalty = options.repeatPenalty;
-  applyLmOptiFields(body, options);
+  if (shouldSendLmStudioExtensionFields(baseUrl, options.apiKey)) {
+    if (options.topK !== undefined) body.top_k = options.topK;
+    if (options.repeatPenalty !== undefined) body.repeat_penalty = options.repeatPenalty;
+    applyLmOptiFields(body, options);
+  }
   
   // Use provided model or omit to use currently loaded model
   if (shouldSendModel(options.model)) {
